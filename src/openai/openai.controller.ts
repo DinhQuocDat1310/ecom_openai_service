@@ -70,7 +70,7 @@ export class OpenaiController {
   @ApiBody({ type: ChatDTO })
   @Post('/chat/embed')
   @ApiOperation({
-    summary: 'Embedded vector',
+    summary: 'Chat query with Embedded vector and LLM',
   })
   async searchWithEmbedData(@Body() chatDTO: ChatDTO) {
     return await this.openaiService.searchWithEmbedData(chatDTO.text);
@@ -85,13 +85,13 @@ export class OpenaiController {
       },
     },
   })
-  @ApiOperation({ summary: 'Upload file (PDF/PNG/WORD)' })
+  @ApiOperation({ summary: 'Upload file to embed (PDF/PNG/WORD)' })
   @ApiForbiddenResponse({ description: 'Forbidden' })
   @ApiBadRequestResponse({ description: 'Bad Request' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized' })
   @UseInterceptors(FileInterceptor('file'))
   @Post('upload')
   async uploadFile(@UploadedFile('file') file: any) {
-    return console.log(file);
+    return await this.openaiService.readDataFile(file);
   }
 }

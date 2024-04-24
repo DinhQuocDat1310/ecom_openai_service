@@ -24,6 +24,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@langchain/anthropic": "^0.1.5",
     "@langchain/community": "^0.0.26",
     "@langchain/core": "^0.1.23",
     "@langchain/google-genai": "^0.0.9",

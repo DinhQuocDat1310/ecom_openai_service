@@ -5,10 +5,17 @@ import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { PrismaVectorStore } from '@langchain/community/vectorstores/prisma';
 import { Document, Prisma, PrismaClient } from '@prisma/client';
 import { loadQAMapReduceChain } from 'langchain/chains';
+import * as pdfParser from 'pdf-parse';
+import { BufferMemory } from 'langchain/memory';
+import { ChatAnthropic } from '@langchain/anthropic';
+import { RunnableSequence } from '@langchain/core/runnables';
+
 @Injectable()
 export class OpenaiService {
   chatModel = new ChatOpenAI({
     openAIApiKey: this.configService.get('LANGCHAIN_API_KEY'),
+    modelName: 'gpt-3.5-turbo',
+    temperature: 0,
   });
   db = new PrismaClient();
   constructor(private readonly configService: ConfigService) {}
@@ -48,16 +55,20 @@ export class OpenaiService {
     );
 
     //Data
-    const texts = [
-      'Step 1: "Decide on a controlling idea and create a topic sentenceParagraph development begins with the formulation with exmaple123@gmail.com of the controlling idea. This idea directs the paragraph’s development. Often, the controlling idea of a paragraph will appear in the form of a topic sentence. In some cases, you may need more than one sentence to express a paragraph’s controlling idea"',
-      'Harry: "Hey! What a surprise! Yes, you are right, we haven’t seen each other in a long time. How have you been?"',
-      'Rann: "There is an important campaign next week which is keeping me busy otherwise rest is going good in my life. How about you?"',
-      'Harry: "Oh! I just finished a meeting with a very important client of mine and now, This is my email: dinhquocdat1310@gmail.com I finally have some free time. I feel relieved that I’m done with it."',
-      'Rann: "Good for you then. Hey! Let’s make a plan and catch up with each other after next week. What do you say?"',
-      'Harry: "Sure, why not? Give me a call when you are done with your project."',
-      'Rann: "Sure, then. Bye, take care."',
-      'Harry: "Bye buddy."',
-    ];
+    const textJson: any[] = [];
+
+    for (let index = 0; index < 200; index++) {
+      textJson.push({
+        id: 1,
+        name: `Product ${index}`,
+        price: Math.floor(Math.random() * 20000001),
+      });
+    }
+
+    // Transform fake data to texts
+    const texts = textJson.map(
+      (product) => `Name Product: ${product.name} - Price: ${product.price}`,
+    );
 
     await vectorStore.addModels(
       await this.db.$transaction(
@@ -89,5 +100,57 @@ export class OpenaiService {
       question: chat,
       input_documents: relevantDocs,
     });
+  };
+
+  handleParseBufferToText = async (file: any) => {
+    let content: string[] = [];
+    const pdf = await pdfParser(file.buffer);
+    const lines = pdf.text.split('\n');
+    for (const line of lines) {
+      if (line.trim() !== '') {
+        content.push(line.trim());
+      }
+    }
+    return content;
+  };
+
+  filterEmbeddedFile = async (file: any) => {
+    let textData: string[] = [];
+    switch (file.mimetype) {
+      case 'application/pdf':
+        textData = await this.handleParseBufferToText(file);
+        break;
+      case 'image/png':
+        break;
+      default:
+        throw new Error('Unsupported file type');
+    }
+    return textData;
+  };
+
+  readDataFile = async (file: any) => {
+    const resultContents = await this.filterEmbeddedFile(file);
+    const vectorStore = PrismaVectorStore.withModel<Document>(this.db).create(
+      new OpenAIEmbeddings({
+        openAIApiKey: this.configService.get('LANGCHAIN_API_KEY'),
+      }),
+      {
+        prisma: Prisma,
+        tableName: 'Document',
+        vectorColumnName: 'vector',
+        columns: {
+          id: PrismaVectorStore.IdColumn,
+          content: PrismaVectorStore.ContentColumn,
+        },
+      },
+    );
+
+    await vectorStore.addModels(
+      await this.db.$transaction(
+        resultContents.map((content) =>
+          this.db.document.create({ data: { content } }),
+        ),
+      ),
+    );
   };
 }
